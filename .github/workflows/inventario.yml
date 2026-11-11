@@ -1,7 +1,7 @@
 name: Inventário documental federal
 on:
   push:
-    paths: ['scripts/**', '.github/workflows/inventario.yml']
+    paths: ['scripts/inventariar.py', '.github/workflows/inventario.yml']
   workflow_dispatch:
 permissions:
   contents: read
