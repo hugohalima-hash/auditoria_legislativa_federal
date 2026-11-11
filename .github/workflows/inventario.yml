@@ -1,0 +1,33 @@
+name: Inventário documental federal
+on:
+  push:
+    paths: ['scripts/**', '.github/workflows/inventario.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: inventario-federal
+  cancel-in-progress: false
+jobs:
+  inventario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Testes
+        run: python -m unittest discover -s tests -v
+      - name: Inventariar acervo congelado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/inventariar.py
+      - name: Preservar resultados e falhas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventario-federal-${{ github.run_id }}
+          path: resultados/
+          retention-days: 90
+          if-no-files-found: error
