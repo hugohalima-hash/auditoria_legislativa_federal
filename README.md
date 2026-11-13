@@ -35,3 +35,11 @@ A busca usa até oito termos de cada artigo e recupera até doze vizinhos de out
 A identificação por hash e posição distingue artigos de mesma numeração em anexos e no ADCT; não constitui reconciliação de identidade legislativa. O texto do bloco preserva notas e títulos entre artigos para não eliminar ressalvas relevantes. Documentos do acervo secundário, inclusive os que se declaram compilados, precisam de confronto oficial.
 
 O comparativo jurídico final permanece pendente da reconciliação de normas, confirmação de fontes e vigência, avaliação por assunto, jurisprudência e análise dos contrapontos. Não há serviço de IA externo configurado nem promessa de que o GitHub, sozinho, emitirá esse parecer. O usuário não precisa analisar os arquivos intermediários.
+
+## Retomada de coleta
+
+A coleta agora preserva um catálogo e um banco SQLite, com transações a cada 32 documentos. Ao retomar no mesmo diretório, confere novamente o hash dos textos salvos e baixa apenas os ausentes ou inválidos. O workflow restaura e salva esse checkpoint no cache do Actions, enquanto disponível. Artefatos continuam preservados por 90 dias. Um cache expirado exige recuperar o artefato ou refazer a coleta.
+
+`python scripts/inventariar.py --saida resultados` retoma o processamento. Para diagnóstico controlado, `--max-documentos 64` baixa no máximo 64 documentos pendentes e termina com status parcial e código de saída não zero quando ainda faltar material. Isso não autoriza emitir um comparativo integral. O catálogo evita percorrer diretórios auxiliares cujo nome começa por ponto ou sublinhado; esse conteúdo já era excluído do conjunto de documentos analisados.
+
+Em 13/11/2026, as execuções do dia 11 ainda apareciam na fila, sem jobs ou artefatos. Actions estava habilitado; a interface não apresentou a causa da espera. A configuração instalada não significa execução concluída.

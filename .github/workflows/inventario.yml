@@ -19,10 +19,27 @@ jobs:
           python-version: '3.12'
       - name: Testes
         run: python -m unittest discover -s tests -v
+      - name: Recuperar checkpoint da coleta
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            resultados/catalogo.json
+            resultados/coleta.sqlite
+          key: coleta-v2-c9f21b4ab11aa0d7ca6fe861d75028e94219c2d6-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            coleta-v2-c9f21b4ab11aa0d7ca6fe861d75028e94219c2d6-
       - name: Inventariar acervo congelado
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/inventariar.py
+      - name: Salvar checkpoint para retomada
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            resultados/catalogo.json
+            resultados/coleta.sqlite
+          key: coleta-v2-c9f21b4ab11aa0d7ca6fe861d75028e94219c2d6-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Preservar resultados e falhas
         if: always()
         uses: actions/upload-artifact@v4
