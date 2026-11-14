@@ -37,3 +37,25 @@ class ComparisonTest(unittest.TestCase):
         self.assertFalse(review_valid({'classificacao':'conflito_confirmado','dispositivos':['a','b']},{'a','b'}))
 
 if __name__=='__main__': unittest.main()
+
+class InvalidLinksTest(unittest.TestCase):
+    def test_bad_ipv6_does_not_drop_article(self):
+        d=doc('a','Art. 1º É permitido transportar animais domésticos em veículos públicos municipais.')
+        d['links_no_documento']=['https://[invalido','https://www.planalto.gov.br/lei.htm']
+        blocks=list(segments(d))
+        self.assertEqual(len(blocks),1)
+        self.assertEqual(blocks[0]['texto'],d['texto'])
+        self.assertEqual(blocks[0]['links_oficiais_candidatos'],d['links_no_documento'][1:])
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); source=root/'input.gz'
+            with gzip.open(source,'wt') as f: f.write(json.dumps(d)+'\n')
+            summary=run(source,root/'out')
+            self.assertEqual(summary['documentos'],1)
+            self.assertEqual(summary['artigos'],1)
+            self.assertEqual(summary['links_invalidos'],1)
+            issue=json.loads((root/'out/links_invalidos.jsonl').read_text())
+            self.assertEqual(issue['url'],'https://[invalido')
+    def test_invalid_link_shapes(self):
+        d=doc('a','')
+        d['links_no_documento']=[None, 12, 'https:///sem-host', 'javascript:alert(1)', 'https://planalto.gov.br.evil.org/a']
+        self.assertEqual(official_links(d),[])

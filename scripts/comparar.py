@@ -22,11 +22,27 @@ def tokens(text):
     stop = {normalized(x) for x in STOP}
     return set(w for w in re.findall(r'[a-z]{3,}', normalized(text)) if w not in stop)
 
-def official_links(doc):
+def classify_links(doc):
     domains = ('planalto.gov.br', 'camara.leg.br', 'senado.leg.br', 'in.gov.br', 'stf.jus.br', 'stj.jus.br')
-    return [u for u in doc.get('links_no_documento', []) if any((urlsplit(u).hostname or '').lower() == d or (urlsplit(u).hostname or '').lower().endswith('.'+d) for d in domains)]
+    official, invalid = [], []
+    for url in doc.get('links_no_documento', []):
+        try:
+            parsed = urlsplit(url)
+            host = (parsed.hostname or '').lower()
+            if parsed.scheme not in {'http', 'https'} or not host:
+                raise ValueError('URL sem esquema HTTP(S) ou hostname')
+        except (ValueError, TypeError, AttributeError) as exc:
+            invalid.append({'url': url, 'erro': str(exc)})
+            continue
+        if any(host == d or host.endswith('.'+d) for d in domains):
+            official.append(url)
+    return official, invalid
+
+def official_links(doc):
+    return classify_links(doc)[0]
 
 def segments(doc):
+    links = official_links(doc)
     lines = doc['texto'].splitlines()
     starts = [(i, m.group(1)) for i, line in enumerate(lines) if (m := ARTICLE.match(line))]
     for k, (start, number) in enumerate(starts):
@@ -36,7 +52,7 @@ def segments(doc):
         uid = hashlib.sha256(f"{doc['arquivo']}:{start+1}:{text}".encode()).hexdigest()
         yield {'id': uid, 'arquivo': doc['arquivo'], 'artigo': number, 'linha': start+1,
                'texto': text, 'url': doc['url_acervo'], 'sha256_documento': doc['sha256'],
-               'links_oficiais_candidatos': official_links(doc), 'vigencia': 'nao_verificada'}
+               'links_oficiais_candidatos': links, 'vigencia': 'nao_verificada'}
 
 def signals(a, b):
     def modal(t):
@@ -62,9 +78,13 @@ def run(source, out, limit=12, threshold=.28):
     db.executescript('DROP TABLE IF EXISTS artigos; DROP TABLE IF EXISTS busca; CREATE TABLE artigos (id INTEGER PRIMARY KEY, arquivo TEXT, payload TEXT); CREATE VIRTUAL TABLE busca USING fts5(termos);')
     counts = Counter(documentos=0, artigos=0, documentos_sem_artigos=0, pares_recuperados=0, candidatos=0, consultas_saturadas=0, consultas=0)
     df = Counter()
-    with gzip.open(source, 'rt', encoding='utf-8') as handle, open(out/'segmentacao_pendencias.jsonl','w',encoding='utf-8') as pending:
+    with gzip.open(source, 'rt', encoding='utf-8') as handle, open(out/'segmentacao_pendencias.jsonl','w',encoding='utf-8') as pending, open(out/'links_invalidos.jsonl','w',encoding='utf-8') as bad_links:
         for line in handle:
             doc = json.loads(line); counts['documentos'] += 1
+            _, invalid = classify_links(doc)
+            counts['links_invalidos'] += len(invalid)
+            for link in invalid:
+                bad_links.write(json.dumps({'arquivo': doc['arquivo'], **link},ensure_ascii=False)+'\n')
             blocks = list(segments(doc))
             if not blocks:
                 counts['documentos_sem_artigos'] += 1
@@ -74,6 +94,9 @@ def run(source, out, limit=12, threshold=.28):
                 row = db.execute('INSERT INTO artigos(arquivo,payload) VALUES (?,?)', (block['arquivo'], json.dumps(block, ensure_ascii=False))).lastrowid
                 db.execute('INSERT INTO busca(rowid,termos) VALUES (?,?)', (row, ' '.join(sorted(terms))))
                 counts['artigos'] += 1
+            if counts['documentos'] % 1000 == 0:
+                db.commit()
+                print(json.dumps({'fase':'indexacao', **counts}),flush=True)
     db.commit()
     db.execute('CREATE TABLE IF NOT EXISTS pares (a INTEGER, b INTEGER, PRIMARY KEY(a,b))')
     db.execute('DELETE FROM pares')
@@ -87,6 +110,9 @@ def run(source, out, limit=12, threshold=.28):
             # Exclude same file before LIMIT. Search both directions; deduplicate pairs below.
             matches = db.execute('SELECT artigos.id, artigos.payload FROM busca JOIN artigos ON artigos.id=busca.rowid WHERE busca MATCH ? AND artigos.arquivo != ? ORDER BY rank, artigos.id LIMIT ?', (query,a['arquivo'],limit+1)).fetchall()
             counts['consultas'] += 1
+            if counts['consultas'] % 1000 == 0:
+                db.commit(); output.flush(); page.flush()
+                print(json.dumps({'fase':'comparacao', **counts}),flush=True)
             counts['consultas_saturadas'] += len(matches) > limit
             for other, braw in matches[:limit]:
                 key = tuple(sorted((row, other)))

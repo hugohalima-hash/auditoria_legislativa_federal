@@ -1,5 +1,7 @@
 name: Comparação documental federal
 on:
+  push:
+    paths: ['scripts/comparar.py', 'tests/test_comparar.py', '.github/workflows/comparacao.yml']
   workflow_run:
     workflows: ['Inventário documental federal']
     types: [completed]
@@ -13,11 +15,11 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: comparacao-${{ github.event.workflow_run.id || inputs.run_id }}
+  group: comparacao-${{ github.event.workflow_run.id || inputs.run_id || '43509235952' }}
   cancel-in-progress: false
 jobs:
   comparar:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 330
     steps:
@@ -30,10 +32,10 @@ jobs:
       - name: Recuperar inventário preservado
         uses: actions/download-artifact@v4
         with:
-          name: inventario-federal-${{ github.event.workflow_run.id || inputs.run_id }}
+          name: inventario-federal-${{ github.event.workflow_run.id || inputs.run_id || '43509235952' }}
           path: resultados/
           github-token: ${{ github.token }}
-          run-id: ${{ github.event.workflow_run.id || inputs.run_id }}
+          run-id: ${{ github.event.workflow_run.id || inputs.run_id || '43509235952' }}
       - name: Comparar artigos e gerar visão lado a lado
         run: python scripts/comparar.py
       - name: Preservar comparação e cobertura
